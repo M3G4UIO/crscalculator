@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Puntaje CRS - Inmigración a Canadá</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Charcoal, Warm Off-White, Vibrant Red, Muted Teal -->
+    <!-- Application Structure Plan: A multi-step, conversational wizard structure was chosen to guide the user through the complex CRS calculation process. This approach breaks down the information into manageable sections (Personal, Education, Work, Language), reducing cognitive load and making the experience less intimidating. The flow is: 1. Welcome Screen. 2. Multi-step form for data collection. 3. Dynamic calculation in the background. 4. A comprehensive results page that presents the CRS score, a detailed breakdown, program eligibility, personalized suggestions, and a dynamic chart of recent draws. This structure directly addresses the user's need for clarity, guidance, and actionable insights as outlined in the source report. -->
+    <!-- Visualization & Content Choices: Report Info: Historical CRS draw data. -> Goal: Compare user's score with recent trends. -> Viz/Presentation: Interactive Bar Chart (Chart.js/Canvas). -> Interaction: Filter by draw type (General, CEC, French, etc.). -> Justification: A visual comparison is more intuitive than a simple table and provides immediate context for the user's score. Report Info: CRS points breakdown. -> Goal: Inform and build trust. -> Viz/Presentation: Structured HTML list. -> Interaction: Static display. -> Justification: A clear, itemized list is the most transparent way to show how the final score was calculated. Report Info: Program eligibility rules. -> Goal: Determine viable immigration paths. -> Viz/Presentation: Dynamic text blocks and badges. -> Interaction: Content generated based on user input. -> Justification: This provides a clear "pass/fail" assessment for each program, which is a primary goal of the tool. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f6f1;
+            color: #2c2c2c;
+        }
+        .form-step {
+            display: none;
+        }
+        .form-step.active {
+            display: block;
+        }
+        .progress-bar-fill {
+            transition: width 0.4s ease-in-out;
+        }
+        .btn-primary {
+            background-color: #dd2c00;
+            color: white;
+            transition: background-color 0.3s;
+        }
+        .btn-primary:hover {
+            background-color: #b72100;
+        }
+        .btn-secondary {
+            background-color: #ffffff;
+            color: #2c2c2c;
+            border: 1px solid #d4d4d4;
+            transition: background-color 0.3s;
+        }
+        .btn-secondary:hover {
+            background-color: #f1f1f1;
+        }
+        .input-field {
+            background-color: #ffffff;
+            border: 1px solid #d1d5db;
+        }
+        .input-field:focus {
+            border-color: #dd2c00;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(221, 44, 0, 0.2);
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 500px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 450px;
+            }
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
+        
+        <header class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-gray-800">Calculadora de Puntos CRS</h1>
+            <p class="mt-2 text-lg text-gray-600">Descubre tu puntaje para la residencia permanente en Canadá.</p>
+        </header>
+
+        <main id="calculator-container" class="bg-white p-6 md:p-10 rounded-2xl shadow-lg">
+            
+            <!-- Progress Bar -->
+            <div id="progress-bar-container" class="w-full bg-gray-200 rounded-full h-2.5 mb-6">
+                <div id="progress-bar-fill" class="bg-red-600 h-2.5 rounded-full progress-bar-fill" style="width: 0%;"></div>
+            </div>
+
+            <div id="form-steps">
+                <!-- Step 0: Welcome -->
+                <div class="form-step active" data-step="0">
+                    <h2 class="text-2xl font-semibold mb-4 text-gray-700">Bienvenido a tu Guía de Inmigración</h2>
+                    <p class="mb-6 text-gray-600">Esta herramienta te ayudará a calcular tu puntaje en el Sistema de Clasificación Integral (CRS) y a entender tus opciones para inmigrar a Canadá a través del sistema Express Entry. El proceso tomará unos minutos. ¡Empecemos!</p>
+                    <button onclick="nextStep()" class="w-full btn-primary font-bold py-3 px-4 rounded-lg text-lg">Comenzar</button>
+                </div>
+
+                <!-- Step 1: Personal Information -->
+                <div class="form-step" data-step="1">
+                    <h2 class="text-2xl font-semibold mb-4">Información Personal</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="maritalStatus" class="block mb-2 font-medium text-gray-700">¿Cuál es tu estado civil?</label>
+                            <select id="maritalStatus" class="w-full p-3 rounded-lg input-field">
+                                <option value="single">Soltero/a</option>
+                                <option value="married">Casado/a o en unión libre</option>
+                            </select>
+                        </div>
+                        <div id="spouse-accompanying-container" class="hidden">
+                             <label for="spouseAccompanying" class="block mb-2 font-medium text-gray-700">¿Tu cónyuge/pareja te acompañará a Canadá?</label>
+                            <select id="spouseAccompanying" class="w-full p-3 rounded-lg input-field">
+                                <option value="yes">Sí</option>
+                                <option value="no">No</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="dob" class="block mb-2 font-medium text-gray-700">Fecha de Nacimiento</label>
+                            <input type="date" id="dob" class="w-full p-3 rounded-lg input-field">
+                        </div>
+                        <div id="spouse-dob-container" class="hidden">
+                            <label for="spouseDob" class="block mb-2 font-medium text-gray-700">Fecha de Nacimiento de tu Cónyuge</p>
+                            <input type="date" id="spouseDob" class="w-full p-3 rounded-lg input-field">
+                        </div>
+                         <div>
+                            <label for="hasSiblingInCanada" class="block mb-2 font-medium text-gray-700">¿Tienes un hermano/a en Canadá (ciudadano/a o residente)?</label>
+                            <select id="hasSiblingInCanada" class="w-full p-3 rounded-lg input-field">
+                                <option value="no">No</option>
+                                <option value="yes">Sí</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Education -->
+                <div class="form-step" data-step="2">
+                    <h2 class="text-2xl font-semibold mb-4">Educación</h2>
+                    <div>
+                        <label for="educationLevel" class="block mb-2 font-medium text-gray-700">Nivel más alto de educación (requiere ECA si es fuera de Canadá)</label>
+                        <select id="educationLevel" class="w-full p-3 rounded-lg input-field">
+                            <option value="none">Menos de secundaria</option>
+                            <option value="secondary">Diploma de secundaria</option>
+                            <option value="post_secondary_1_2">Diploma/Certificado post-secundario (1-2 años)</option>
+                            <option value="post_secondary_3_plus">Título post-secundario (3 años o más)</option>
+                            <option value="two_or_more_post_secondary">Dos o más títulos post-secundarios (uno de 3+ años)</option>
+                            <option value="masters">Maestría o título profesional (NOC A)</option>
+                            <option value="phd">Doctorado (PhD)</option>
+                        </select>
+                    </div>
+                    <div class="mt-4">
+                        <label for="canadianEducation" class="block mb-2 font-medium text-gray-700">¿Tienes un título, diploma o certificado de una institución canadiense?</label>
+                        <select id="canadianEducation" class="w-full p-3 rounded-lg input-field">
+                            <option value="none">No</option>
+                            <option value="1_2_years">Sí, de 1 o 2 años</option>
+                            <option value="3_plus_years">Sí, de 3 años o más</option>
+                        </select>
+                    </div>
+                    <div id="spouse-education-container" class="hidden mt-6">
+                         <h3 class="text-xl font-semibold mb-2">Educación del Cónyuge</h3>
+                         <label for="spouseEducationLevel" class="block mb-2 font-medium text-gray-700">Nivel más alto de educación de tu cónyuge/pareja</label>
+                         <select id="spouseEducationLevel" class="w-full p-3 rounded-lg input-field">
+                            <option value="none">Menos de secundaria</option>
+                            <option value="secondary">Diploma de secundaria</option>
+                            <option value="post_secondary_1_2">Diploma/Certificado post-secundario (1-2 años)</option>
+                            <option value="post_secondary_3_plus">Título post-secundario (3 años o más)</option>
+                            <option value="two_or_more_post_secondary">Dos o más títulos post-secundarios (uno de 3+ años)</option>
+                            <option value="masters">Maestría o título profesional (NOC A)</option>
+                            <option value="phd">Doctorado (PhD)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Step 3: Work Experience -->
+                <div class="form-step" data-step="3">
+                    <h2 class="text-2xl font-semibold mb-4">Experiencia Laboral</h2>
+                    <div>
+                        <label for="foreignWorkExperience" class="block mb-2 font-medium text-gray-700">Años de experiencia laboral calificada (fuera de Canadá) en los últimos 10 años</label>
+                        <select id="foreignWorkExperience" class="w-full p-3 rounded-lg input-field">
+                            <option value="0">Ninguna o menos de 1 año</option>
+                            <option value="1">1 año</option>
+                            <option value="2">2 años</option>
+                            <option value="3">3 años o más</option>
+                        </select>
+                    </div>
+                    <div class="mt-4">
+                        <label for="canadianWorkExperience" class="block mb-2 font-medium text-gray-700">Años de experiencia laboral calificada (en Canadá) en los últimos 10 años</label>
+                        <select id="canadianWorkExperience" class="w-full p-3 rounded-lg input-field">
+                            <option value="0">Ninguna o menos de 1 año</option>
+                            <option value="1">1 año</option>
+                            <option value="2">2 años</option>
+                            <option value="3">3 años</option>
+                            <option value="4">4 años</option>
+                            <option value="5">5 años o más</option>
+                        </select>
+                    </div>
+                     <div id="spouse-work-container" class="hidden mt-6">
+                         <h3 class="text-xl font-semibold mb-2">Experiencia Laboral del Cónyuge</h3>
+                         <label for="spouseCanadianWorkExperience" class="block mb-2 font-medium text-gray-700">Años de experiencia laboral calificada de tu cónyuge (en Canadá)</label>
+                         <select id="spouseCanadianWorkExperience" class="w-full p-3 rounded-lg input-field">
+                            <option value="0">Ninguna o menos de 1 año</option>
+                            <option value="1">1 año</option>
+                            <option value="2">2 años</option>
+                            <option value="3">3 años</option>
+                            <option value="4">4 años</option>
+                            <option value="5">5 años o más</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- Step 4: Language Proficiency -->
+                <div class="form-step" data-step="4">
+                    <h2 class="text-2xl font-semibold mb-4">Dominio de Idiomas</h2>
+                    <p class="mb-4 text-sm text-gray-500">Ingresa tus puntajes de idioma (Inglés o Francés) según los niveles CLB/NCLC.</p>
+                    
+                    <h3 class="text-xl font-semibold mb-2">Primer Idioma Oficial</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                            <label for="lang1_speak" class="block text-sm font-medium">Oral (CLB)</label>
+                            <select id="lang1_speak" class="w-full p-2 mt-1 rounded-md input-field"><option value="<4">&lt;4</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10+">10+</option></select>
+                        </div>
+                        <div>
+                            <label for="lang1_listen" class="block text-sm font-medium">Auditiva (CLB)</label>
+                            <select id="lang1_listen" class="w-full p-2 mt-1 rounded-md input-field"><option value="<4">&lt;4</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10+">10+</option></select>
+                        </div>
+                        <div>
+                            <label for="lang1_read" class="block text-sm font-medium">Lectura (CLB)</label>
+                            <select id="lang1_read" class="w-full p-2 mt-1 rounded-md input-field"><option value="<4">&lt;4</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10+">10+</option></select>
+                        </div>
+                        <div>
+                            <label for="lang1_write" class="block text-sm font-medium">Escritura (CLB)</label>
+                            <select id="lang1_write" class="w-full p-2 mt-1 rounded-md input-field"><option value="<4">&lt;4</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10+">10+</option></select>
+                        </div>
+                    </div>
+
+                    <h3 class="text-xl font-semibold mt-6 mb-2">Segundo Idioma Oficial (Opcional)</h3>
+                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                            <label for="lang2_speak" class="block text-sm font-medium">Oral (CLB)</label>
+                            <select id="lang2_speak" class="w-full p-2 mt-1 rounded-md input-field"><option value="<5">&lt;5</option><option value="5-6">5-6</option><option value="7-8">7-8</option><option value="9+">9+</option></select>
+                        </div>
+                        <div>
+                            <label for="lang2_listen" class="block text-sm font-medium">Auditiva (CLB)</label>
+                            <select id="lang2_listen" class="w-full p-2 mt-1 rounded-md input-field"><option value="<5">&lt;5</option><option value="5-6">5-6</option><option value="7-8">7-8</option><option value="9+">9+</option></select>
+                        </div>
+                        <div>
+                            <label for="lang2_read" class="block text-sm font-medium">Lectura (CLB)</label>
+                            <select id="lang2_read" class="w-full p-2 mt-1 rounded-md input-field"><option value="<5">&lt;5</option><option value="5-6">5-6</option><option value="7-8">7-8</option><option value="9+">9+</option></select>
+                        </div>
+                        <div>
+                            <label for="lang2_write" class="block text-sm font-medium">Escritura (CLB)</label>
+                            <select id="lang2_write" class="w-full p-2 mt-1 rounded-md input-field"><option value="<5">&lt;5</option><option value="5-6">5-6</option><option value="7-8">7-8</option><option value="9+">9+</option></select>
+                        </div>
+                    </div>
+                     <div class="mt-4">
+                        <label for="isFrenchPrimary" class="block mb-2 font-medium text-gray-700">¿El Francés es tu primer idioma (NCLC 7+ en las 4 habilidades)?</label>
+                        <select id="isFrenchPrimary" class="w-full p-3 rounded-lg input-field">
+                            <option value="no">No</option>
+                            <option value="yes">Sí</option>
+                        </select>
+                    </div>
+
+                    <div id="spouse-language-container" class="hidden mt-6">
+                        <h3 class="text-xl font-semibold mb-2">Idioma del Cónyuge (Primer Idioma)</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                           <div>
+                                <label for="spouse_lang_speak" class="block text-sm font-medium">Oral (CLB)</label>
+                                <select id="spouse_lang_speak" class="w-full p-2 mt-1 rounded-md input-field"><option value="<5">&lt;5</option><option value="5-6">5-6</option><option value="7-8">7-8</option><option value="9+">9+</option></select>
+                            </div>
+                            <div>
+                                <label for="spouse_lang_listen" class="block text-sm font-medium">Auditiva (CLB)</label>
+                                <select id="spouse_lang_listen" class="w-full p-2 mt-1 rounded-md input-field"><option value="<5">&lt;5</option><option value="5-6">5-6</option><option value="7-8">7-8</option><option value="9+">9+</option></select>
+                            </div>
+                            <div>
+                                <label for="spouse_lang_read" class="block text-sm font-medium">Lectura (CLB)</label>
+                                <select id="spouse_lang_read" class="w-full p-2 mt-1 rounded-md input-field"><option value="<5">&lt;5</option><option value="5-6">5-6</option><option value="7-8">7-8</option><option value="9+">9+</option></select>
+                            </div>
+                            <div>
+                                <label for="spouse_lang_write" class="block text-sm font-medium">Escritura (CLB)</label>
+                                <select id="spouse_lang_write" class="w-full p-2 mt-1 rounded-md input-field"><option value="<5">&lt;5</option><option value="5-6">5-6</option><option value="7-8">7-8</option><option value="9+">9+</option></select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Step 5: Additional Factors -->
+                <div class="form-step" data-step="5">
+                    <h2 class="text-2xl font-semibold mb-4">Factores Adicionales</h2>
+                    <div>
+                        <label for="provincialNomination" class="block mb-2 font-medium text-gray-700">¿Tienes una nominación provincial (PNP)?</label>
+                        <select id="provincialNomination" class="w-full p-3 rounded-lg input-field">
+                            <option value="no">No</option>
+                            <option value="yes">Sí</option>
+                        </select>
+                    </div>
+                    <p class="mt-6 text-sm text-gray-600">Nota: A partir del 25 de marzo de 2025, las ofertas de trabajo ya no otorgan puntos CRS, aunque siguen siendo importantes para la elegibilidad de ciertos programas.</p>
+                </div>
+
+                <!-- Navigation Buttons -->
+                <div id="navigation-buttons" class="flex justify-between mt-8">
+                    <button onclick="prevStep()" id="prevBtn" class="btn-secondary font-bold py-2 px-6 rounded-lg hidden">Anterior</button>
+                    <button onclick="nextStep()" id="nextBtn" class="btn-primary font-bold py-2 px-6 rounded-lg ml-auto">Siguiente</button>
+                    <button onclick="calculateScore()" id="submitBtn" class="btn-primary font-bold py-3 px-6 rounded-lg text-lg hidden">Calcular Puntaje</button>
+                </div>
+            </div>
+        </main>
+
+        <section id="results-container" class="hidden mt-8">
+            <div class="bg-white p-6 md:p-10 rounded-2xl shadow-lg text-center">
+                <h2 class="text-2xl font-semibold text-gray-700">Tu Resultado CRS Estimado</h2>
+                <div id="crs-score-display" class="my-6 text-7xl font-bold text-red-600">0</div>
+                <div id="score-feedback" class="text-lg text-gray-600 mb-8"></div>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8 mt-8">
+                <div class="bg-white p-6 rounded-2xl shadow-lg">
+                    <h3 class="text-xl font-bold mb-4 text-gray-800">Programas Viables</h3>
+                    <p class="text-gray-600 mb-4">Basado en tus respuestas, estos son los programas de Express Entry para los que podrías ser elegible. La elegibilidad final es determinada por IRCC.</p>
+                    <ul id="eligible-programs" class="space-y-2"></ul>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-lg">
+                    <h3 class="text-xl font-bold mb-4 text-gray-800">Sugerencias Estratégicas</h3>
+                    <p id="strategic-suggestions" class="text-gray-600"></p>
+                </div>
+            </div>
+            
+            <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg mt-8">
+                <h3 class="text-2xl font-bold mb-4 text-center text-gray-800">Desglose de tu Puntaje</h3>
+                <div id="score-breakdown" class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-gray-700"></div>
+            </div>
+
+            <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg mt-8">
+                <h3 class="text-2xl font-bold mb-2 text-center text-gray-800">Tendencias de Sorteos de Express Entry</h3>
+                <p class="text-center text-gray-600 mb-6">Compara tu puntaje con los cortes mínimos de sorteos recientes.</p>
+                <div class="flex justify-center flex-wrap gap-2 mb-4">
+                    <button class="draw-filter-btn bg-red-600 text-white py-1 px-3 rounded-full text-sm" data-type="all">Todos</button>
+                    <button class="draw-filter-btn bg-gray-200 text-gray-700 py-1 px-3 rounded-full text-sm" data-type="CEC">CEC</button>
+                    <button class="draw-filter-btn bg-gray-200 text-gray-700 py-1 px-3 rounded-full text-sm" data-type="French">Francófonos</button>
+                    <button class="draw-filter-btn bg-gray-200 text-gray-700 py-1 px-3 rounded-full text-sm" data-type="Health">Salud</button>
+                    <button class="draw-filter-btn bg-gray-200 text-gray-700 py-1 px-3 rounded-full text-sm" data-type="Trades">Oficios</button>
+                    <button class="draw-filter-btn bg-gray-200 text-gray-700 py-1 px-3 rounded-full text-sm" data-type="PNP">PNP</button>
+                </div>
+                <div class="chart-container">
+                    <canvas id="crsDrawsChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="text-center mt-8">
+                <button onclick="resetCalculator()" class="btn-secondary font-bold py-3 px-8 rounded-lg text-lg">Calcular de Nuevo</button>
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+        let currentStep = 0;
+        const formSteps = document.querySelectorAll('.form-step');
+        const totalSteps = formSteps.length - 1;
+
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const progressBarFill = document.getElementById('progress-bar-fill');
+
+        document.getElementById('maritalStatus').addEventListener('change', function() {
+            const isMarried = this.value === 'married';
+            document.getElementById('spouse-accompanying-container').style.display = isMarried ? 'block' : 'none';
+            if (!isMarried) {
+                document.getElementById('spouseAccompanying').value = 'no';
+            }
+            toggleSpouseSections();
+        });
+
+        document.getElementById('spouseAccompanying').addEventListener('change', toggleSpouseSections);
+
+        function toggleSpouseSections() {
+            const isMarried = document.getElementById('maritalStatus').value === 'married';
+            const isAccompanying = document.getElementById('spouseAccompanying').value === 'yes';
+            const showSpouse = isMarried && isAccompanying;
+            
+            document.getElementById('spouse-dob-container').style.display = showSpouse ? 'block' : 'none';
+            document.getElementById('spouse-education-container').style.display = showSpouse ? 'block' : 'none';
+            document.getElementById('spouse-work-container').style.display = showSpouse ? 'block' : 'none';
+            document.getElementById('spouse-language-container').style.display = showSpouse ? 'block' : 'none';
+        }
+
+        function updateProgressBar() {
+            const progress = (currentStep / totalSteps) * 100;
+            progressBarFill.style.width = `${progress}%`;
+        }
+
+        function showStep(step) {
+            formSteps.forEach((el, index) => {
+                el.classList.toggle('active', index === step);
+            });
+            updateProgressBar();
+            prevBtn.style.display = step > 0 ? 'inline-block' : 'none';
+            nextBtn.style.display = step < totalSteps ? 'inline-block' : 'none';
+            submitBtn.style.display = step === totalSteps ? 'inline-block' : 'none';
+            
+            if (step === 0) {
+                 document.getElementById('progress-bar-container').style.display = 'none';
+                 document.getElementById('navigation-buttons').classList.add('justify-center');
+                 document.getElementById('navigation-buttons').classList.remove('justify-between');
+            } else {
+                 document.getElementById('progress-bar-container').style.display = 'block';
+                 document.getElementById('navigation-buttons').classList.remove('justify-center');
+                 document.getElementById('navigation-buttons').classList.add('justify-between');
+            }
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                showStep(currentStep);
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 0) {
+                currentStep--;
+                showStep(currentStep);
+            }
+        }
+
+        function getAge(dob) {
+            const birthDate = new Date(dob);
+            const today = new Date();
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const m = today.getMonth() - birthDate.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+            return age;
+        }
+
+        function calculateScore() {
+            const withSpouse = document.getElementById('maritalStatus').value === 'married' && document.getElementById('spouseAccompanying').value === 'yes';
+            
+            let totalScore = 0;
+            let breakdown = {};
+
+            // A. Core / Human Capital Factors
+            let coreFactorsScore = 0;
+            
+            // Age
+            const dob = document.getElementById('dob').value;
+            const age = getAge(dob);
+            let agePoints = 0;
+            if (age >= 20 && age <= 29) agePoints = withSpouse ? 100 : 110;
+            else if (age === 18) agePoints = withSpouse ? 90 : 99;
+            else if (age === 19) agePoints = withSpouse ? 95 : 105;
+            else if (age === 30) agePoints = withSpouse ? 95 : 105;
+            else if (age === 31) agePoints = withSpouse ? 90 : 99;
+            else if (age === 32) agePoints = withSpouse ? 85 : 94;
+            else if (age === 33) agePoints = withSpouse ? 80 : 88;
+            else if (age === 34) agePoints = withSpouse ? 75 : 83;
+            else if (age === 35) agePoints = withSpouse ? 70 : 77;
+            else if (age === 36) agePoints = withSpouse ? 65 : 72;
+            else if (age === 37) agePoints = withSpouse ? 60 : 66;
+            else if (age === 38) agePoints = withSpouse ? 55 : 61;
+            else if (age === 39) agePoints = withSpouse ? 50 : 55;
+            else if (age === 40) agePoints = withSpouse ? 45 : 50;
+            else if (age === 41) agePoints = withSpouse ? 35 : 39;
+            else if (age === 42) agePoints = withSpouse ? 25 : 28;
+            else if (age === 43) agePoints = withSpouse ? 15 : 17;
+            else if (age === 44) agePoints = withSpouse ? 5 : 6;
+            coreFactorsScore += agePoints;
+            breakdown['Edad'] = agePoints;
+
+            // Education
+            const educationLevel = document.getElementById('educationLevel').value;
+            let educationPoints = 0;
+            const eduPointsMap = {
+                'none': { spouse: 0, noSpouse: 0 },
+                'secondary': { spouse: 28, noSpouse: 30 },
+                'post_secondary_1_2': { spouse: 84, noSpouse: 90 },
+                'post_secondary_3_plus': { spouse: 112, noSpouse: 120 },
+                'two_or_more_post_secondary': { spouse: 119, noSpouse: 128 },
+                'masters': { spouse: 126, noSpouse: 135 },
+                'phd': { spouse: 140, noSpouse: 150 }
+            };
+            educationPoints = withSpouse ? eduPointsMap[educationLevel].spouse : eduPointsMap[educationLevel].noSpouse;
+            coreFactorsScore += educationPoints;
+            breakdown['Nivel de Educación'] = educationPoints;
+
+            // Language
+            const lang1PointsMap = {
+                '<4': { spouse: 0, noSpouse: 0 }, '4': { spouse: 6, noSpouse: 6 }, '5': { spouse: 6, noSpouse: 6 }, '6': { spouse: 8, noSpouse: 9 }, '7': { spouse: 16, noSpouse: 17 }, '8': { spouse: 22, noSpouse: 23 }, '9': { spouse: 29, noSpouse: 31 }, '10+': { spouse: 32, noSpouse: 34 }
+            };
+            let lang1Points = 0;
+            lang1Points += withSpouse ? lang1PointsMap[document.getElementById('lang1_speak').value].spouse : lang1PointsMap[document.getElementById('lang1_speak').value].noSpouse;
+            lang1Points += withSpouse ? lang1PointsMap[document.getElementById('lang1_listen').value].spouse : lang1PointsMap[document.getElementById('lang1_listen').value].noSpouse;
+            lang1Points += withSpouse ? lang1PointsMap[document.getElementById('lang1_read').value].spouse : lang1PointsMap[document.getElementById('lang1_read').value].noSpouse;
+            lang1Points += withSpouse ? lang1PointsMap[document.getElementById('lang1_write').value].spouse : lang1PointsMap[document.getElementById('lang1_write').value].noSpouse;
+            coreFactorsScore += lang1Points;
+            breakdown['Primer Idioma Oficial'] = lang1Points;
+
+            const lang2PointsMap = {
+                '<5': { spouse: 0, noSpouse: 0 }, '5-6': { spouse: 1, noSpouse: 1 }, '7-8': { spouse: 3, noSpouse: 3 }, '9+': { spouse: 6, noSpouse: 6 }
+            };
+            let lang2Points = 0;
+            lang2Points += withSpouse ? lang2PointsMap[document.getElementById('lang2_speak').value].spouse : lang2PointsMap[document.getElementById('lang2_speak').value].noSpouse;
+            lang2Points += withSpouse ? lang2PointsMap[document.getElementById('lang2_listen').value].spouse : lang2PointsMap[document.getElementById('lang2_listen').value].noSpouse;
+            lang2Points += withSpouse ? lang2PointsMap[document.getElementById('lang2_read').value].spouse : lang2PointsMap[document.getElementById('lang2_read').value].noSpouse;
+            lang2Points += withSpouse ? lang2PointsMap[document.getElementById('lang2_write').value].spouse : lang2PointsMap[document.getElementById('lang2_write').value].noSpouse;
+            coreFactorsScore += lang2Points;
+            breakdown['Segundo Idioma Oficial'] = lang2Points;
+
+            // Canadian Work Experience
+            const canadianWorkExperience = parseInt(document.getElementById('canadianWorkExperience').value);
+            let canadianWorkPoints = 0;
+            const canWorkPointsMap = {
+                0: { spouse: 0, noSpouse: 0 }, 1: { spouse: 35, noSpouse: 40 }, 2: { spouse: 46, noSpouse: 53 }, 3: { spouse: 56, noSpouse: 64 }, 4: { spouse: 63, noSpouse: 72 }, 5: { spouse: 70, noSpouse: 80 }
+            };
+            canadianWorkPoints = withSpouse ? canWorkPointsMap[canadianWorkExperience].spouse : canWorkPointsMap[canadianWorkExperience].noSpouse;
+            coreFactorsScore += canadianWorkPoints;
+            breakdown['Experiencia Laboral Canadiense'] = canadianWorkPoints;
+            totalScore += coreFactorsScore;
+
+            // B. Spouse Factors
+            let spouseFactorsScore = 0;
+            if (withSpouse) {
+                const spouseEducationLevel = document.getElementById('spouseEducationLevel').value;
+                const spouseEduPointsMap = { 'none': 0, 'secondary': 2, 'post_secondary_1_2': 6, 'post_secondary_3_plus': 8, 'two_or_more_post_secondary': 9, 'masters': 10, 'phd': 10 };
+                spouseFactorsScore += spouseEduPointsMap[spouseEducationLevel];
+                
+                const spouseLangPointsMap = { '<5': 0, '5-6': 1, '7-8': 3, '9+': 5 };
+                spouseFactorsScore += spouseLangPointsMap[document.getElementById('spouse_lang_speak').value];
+                spouseFactorsScore += spouseLangPointsMap[document.getElementById('spouse_lang_listen').value];
+                spouseFactorsScore += spouseLangPointsMap[document.getElementById('spouse_lang_read').value];
+                spouseFactorsScore += spouseLangPointsMap[document.getElementById('spouse_lang_write').value];
+                
+                const spouseCanadianWorkExperience = parseInt(document.getElementById('spouseCanadianWorkExperience').value);
+                const spouseCanWorkPointsMap = { 0: 0, 1: 5, 2: 7, 3: 8, 4: 9, 5: 10 };
+                spouseFactorsScore += spouseCanWorkPointsMap[spouseCanadianWorkExperience];
+                totalScore += spouseFactorsScore;
+                breakdown['Factores del Cónyuge'] = spouseFactorsScore;
+            }
+
+            // C. Skill Transferability Factors
+            let skillTransferabilityScore = 0;
+            let educationTransferPoints = 0;
+            const mainLangIsCLB7Plus = ['7', '8', '9', '10+'].includes(document.getElementById('lang1_speak').value) && ['7', '8', '9', '10+'].includes(document.getElementById('lang1_listen').value) && ['7', '8', '9', '10+'].includes(document.getElementById('lang1_read').value) && ['7', '8', '9', '10+'].includes(document.getElementById('lang1_write').value);
+            const mainLangIsCLB9Plus = ['9', '10+'].includes(document.getElementById('lang1_speak').value) && ['9', '10+'].includes(document.getElementById('lang1_listen').value) && ['9', '10+'].includes(document.getElementById('lang1_read').value) && ['9', '10+'].includes(document.getElementById('lang1_write').value);
+            
+            if (['post_secondary_1_2', 'post_secondary_3_plus', 'two_or_more_post_secondary', 'masters', 'phd'].includes(educationLevel)) {
+                if (mainLangIsCLB9Plus) educationTransferPoints = 50;
+                else if (mainLangIsCLB7Plus) educationTransferPoints = 25;
+            }
+            if (['two_or_more_post_secondary', 'masters', 'phd'].includes(educationLevel)) {
+                 if (mainLangIsCLB9Plus) educationTransferPoints = 50;
+                 else if (mainLangIsCLB7Plus) educationTransferPoints = (educationTransferPoints === 25) ? 25 : 13;
+            }
+            
+            let workTransferPoints = 0;
+            const foreignWorkExperience = parseInt(document.getElementById('foreignWorkExperience').value);
+            if (foreignWorkExperience >= 1 && foreignWorkExperience <= 2) {
+                if (mainLangIsCLB9Plus) workTransferPoints = 25;
+                else if (mainLangIsCLB7Plus) workTransferPoints = 13;
+            } else if (foreignWorkExperience >= 3) {
+                if (mainLangIsCLB9Plus) workTransferPoints = 50;
+                else if (mainLangIsCLB7Plus) workTransferPoints = 25;
+            }
+
+            let canadianWorkTransferPoints = 0;
+            if (canadianWorkExperience >= 1) {
+                if (['post_secondary_1_2', 'post_secondary_3_plus', 'two_or_more_post_secondary', 'masters', 'phd'].includes(educationLevel)) canadianWorkTransferPoints = 13;
+                if (['two_or_more_post_secondary', 'masters', 'phd'].includes(educationLevel)) canadianWorkTransferPoints = 25;
+            }
+            if (canadianWorkExperience >= 2) {
+                 if (['post_secondary_1_2', 'post_secondary_3_plus', 'two_or_more_post_secondary', 'masters', 'phd'].includes(educationLevel)) canadianWorkTransferPoints = 25;
+                 if (['two_or_more_post_secondary', 'masters', 'phd'].includes(educationLevel)) canadianWorkTransferPoints = 50;
+            }
+            
+            let foreignAndCanadianWorkPoints = 0;
+            if (canadianWorkExperience >= 1) {
+                if (foreignWorkExperience >= 1 && foreignWorkExperience <= 2) foreignAndCanadianWorkPoints = 13;
+                if (foreignWorkExperience >= 3) foreignAndCanadianWorkPoints = 25;
+            }
+             if (canadianWorkExperience >= 2) {
+                if (foreignWorkExperience >= 1 && foreignWorkExperience <= 2) foreignAndCanadianWorkPoints = 25;
+                if (foreignWorkExperience >= 3) foreignAndCanadianWorkPoints = 50;
+            }
+
+
+            skillTransferabilityScore = Math.min(100, educationTransferPoints + workTransferPoints + canadianWorkTransferPoints + foreignAndCanadianWorkPoints);
+            totalScore += skillTransferabilityScore;
+            breakdown['Transferibilidad de Habilidades'] = skillTransferabilityScore;
+
+            // D. Additional Points
+            let additionalPoints = 0;
+            if (document.getElementById('provincialNomination').value === 'yes') additionalPoints += 600;
+            
+            const isFrenchPrimary = document.getElementById('isFrenchPrimary').value === 'yes';
+            const englishCLB5Plus = ['5', '6', '7', '8', '9', '10+'].includes(document.getElementById('lang2_speak').value) && ['5', '6', '7', '8', '9', '10+'].includes(document.getElementById('lang2_listen').value) && ['5', '6', '7', '8', '9', '10+'].includes(document.getElementById('lang2_read').value) && ['5', '6', '7', '8', '9', '10+'].includes(document.getElementById('lang2_write').value);
+            const englishCLB4Less = !englishCLB5Plus;
+
+            if(isFrenchPrimary) {
+                if(englishCLB5Plus) additionalPoints += 50;
+                else if(englishCLB4Less) additionalPoints += 25;
+            }
+
+            const canadianEducation = document.getElementById('canadianEducation').value;
+            if (canadianEducation === '1_2_years') additionalPoints += 15;
+            if (canadianEducation === '3_plus_years') additionalPoints += 30;
+
+            if (document.getElementById('hasSiblingInCanada').value === 'yes') additionalPoints += 15;
+            
+            totalScore += additionalPoints;
+            breakdown['Puntos Adicionales'] = additionalPoints;
+
+            displayResults(totalScore, breakdown);
+        }
+
+        function displayResults(score, breakdown) {
+            document.getElementById('calculator-container').style.display = 'none';
+            document.getElementById('results-container').style.display = 'block';
+
+            const scoreDisplay = document.getElementById('crs-score-display');
+            scoreDisplay.textContent = score;
+            
+            let feedback = '';
+            if (score >= 470) {
+                feedback = '¡Excelente! Tu puntaje es muy competitivo para los sorteos generales actuales.';
+            } else if (score >= 400) {
+                feedback = 'Tu puntaje es prometedor. Podrías ser un buen candidato para sorteos específicos por categoría o PNP.';
+            } else {
+                feedback = 'Tu puntaje actual es bajo para la mayoría de los sorteos. Explora las sugerencias para mejorarlo.';
+            }
+            document.getElementById('score-feedback').textContent = feedback;
+
+            // Display breakdown
+            const breakdownContainer = document.getElementById('score-breakdown');
+            breakdownContainer.innerHTML = '';
+            for (const key in breakdown) {
+                const div = document.createElement('div');
+                div.className = 'flex justify-between items-center py-2 border-b border-gray-200';
+                div.innerHTML = `<span class="font-medium">${key}</span><span class="font-bold text-lg text-red-600">${breakdown[key]}</span>`;
+                breakdownContainer.appendChild(div);
+            }
+
+            checkEligibilityAndSuggest();
+            renderChart(score);
+        }
+        
+        function checkEligibilityAndSuggest() {
+            const eligibleProgramsContainer = document.getElementById('eligible-programs');
+            eligibleProgramsContainer.innerHTML = '';
+            let eligibleCount = 0;
+            
+            const suggestionsEl = document.getElementById('strategic-suggestions');
+            const score = parseInt(document.getElementById('crs-score-display').textContent);
+
+            // FSWP Check (Simplified 67 points check)
+            let fswpPoints = 0;
+            const lang1_speak_val = document.getElementById('lang1_speak').value;
+            const lang1_listen_val = document.getElementById('lang1_listen').value;
+            const lang1_read_val = document.getElementById('lang1_read').value;
+            const lang1_write_val = document.getElementById('lang1_write').value;
+            
+            const clbToFswp = (clb) => {
+                if (clb === '10+') return 6;
+                if (clb === '9') return 6;
+                if (clb === '8') return 5;
+                if (clb === '7') return 4;
+                return 0;
+            };
+            fswpPoints += clbToFswp(lang1_speak_val) + clbToFswp(lang1_listen_val) + clbToFswp(lang1_read_val) + clbToFswp(lang1_write_val);
+
+            const eduFswpMap = {'secondary': 5, 'post_secondary_1_2': 15, 'post_secondary_3_plus': 21, 'two_or_more_post_secondary': 22, 'masters': 23, 'phd': 25};
+            fswpPoints += eduFswpMap[document.getElementById('educationLevel').value] || 0;
+
+            const foreignWorkFswpMap = {0: 0, 1: 9, 2: 11, 3: 13, 4: 15, 5: 15};
+            const foreignWork = parseInt(document.getElementById('foreignWorkExperience').value);
+            const canadianWork = parseInt(document.getElementById('canadianWorkExperience').value);
+            const totalWork = Math.min(6, foreignWork + canadianWork);
+            if (totalWork === 1) fswpPoints += 9;
+            else if (totalWork === 2 || totalWork === 3) fswpPoints += 11;
+            else if (totalWork === 4 || totalWork === 5) fswpPoints += 13;
+            else if (totalWork >= 6) fswpPoints += 15;
+
+            const age = getAge(document.getElementById('dob').value);
+            if (age >= 18 && age <= 35) fswpPoints += 12;
+            else if (age === 36) fswpPoints += 11;
+            else if (age === 37) fswpPoints += 10;
+            else if (age === 38) fswpPoints += 9;
+            else if (age === 39) fswpPoints += 8;
+            else if (age === 40) fswpPoints += 7;
+            else if (age === 41) fswpPoints += 6;
+            else if (age === 42) fswpPoints += 5;
+            else if (age === 43) fswpPoints += 4;
+            else if (age === 44) fswpPoints += 3;
+            else if (age === 45) fswpPoints += 2;
+            else if (age === 46) fswpPoints += 1;
+            
+            const hasMinLangForFswp = clbToFswp(lang1_speak_val) >= 4 && clbToFswp(lang1_listen_val) >= 4 && clbToFswp(lang1_read_val) >= 4 && clbToFswp(lang1_write_val) >= 4;
+            
+            if (fswpPoints >= 67 && totalWork >= 1 && hasMinLangForFswp) {
+                eligibleProgramsContainer.innerHTML += `<li><span class="font-semibold bg-green-100 text-green-800 py-1 px-2 rounded-md">FSWP</span> - Federal Skilled Worker Program</li>`;
+                eligibleCount++;
+            }
+
+            // CEC Check
+            const hasMinLangForCEC = (clbToFswp(lang1_speak_val) >= 4 && clbToFswp(lang1_listen_val) >= 4 && clbToFswp(lang1_read_val) >= 4 && clbToFswp(lang1_write_val) >= 4);
+            if (canadianWork >= 1 && hasMinLangForCEC) {
+                 eligibleProgramsContainer.innerHTML += `<li><span class="font-semibold bg-green-100 text-green-800 py-1 px-2 rounded-md">CEC</span> - Canadian Experience Class</li>`;
+                 eligibleCount++;
+            }
+            
+            // FSTP Check (simplified)
+            const hasMinLangForFSTP = (['5','6','7','8','9','10+'].includes(lang1_speak_val) && ['5','6','7','8','9','10+'].includes(lang1_listen_val) && ['4','5','6','7','8','9','10+'].includes(lang1_read_val) && ['4','5','6','7','8','9','10+'].includes(lang1_write_val));
+            if (totalWork >= 2 && hasMinLangForFSTP) {
+                 eligibleProgramsContainer.innerHTML += `<li><span class="font-semibold bg-green-100 text-green-800 py-1 px-2 rounded-md">FSTP</span> - Federal Skilled Trades Program</li>`;
+                 eligibleCount++;
+            }
+
+            if (document.getElementById('provincialNomination').value === 'yes') {
+                 eligibleProgramsContainer.innerHTML += `<li><span class="font-semibold bg-green-100 text-green-800 py-1 px-2 rounded-md">PNP</span> - Provincial Nominee Program</li>`;
+                 eligibleCount++;
+            }
+
+            if (eligibleCount === 0) {
+                eligibleProgramsContainer.innerHTML = '<li><span class="font-semibold bg-red-100 text-red-800 py-1 px-2 rounded-md">No elegible</span> - Parece que no cumples los requisitos mínimos para entrar al pool de Express Entry en este momento.</li>';
+                suggestionsEl.textContent = "Tu perfil no parece ser elegible para Express Entry en este momento. Los motivos comunes son no alcanzar los 67 puntos para FSWP, no tener la experiencia laboral calificada mínima o no cumplir los requisitos de idioma. Enfócate en cumplir estos requisitos básicos primero.";
+            } else {
+                if (score >= 470) {
+                    suggestionsEl.textContent = "Tu puntaje es altamente competitivo. Estás en una excelente posición para recibir una Invitación para Aplicar (ITA) en un sorteo general. Te recomendamos preparar tus documentos y considerar contactar a un profesional de inmigración para enviar tu perfil lo antes posible.";
+                } else if (score >= 400) {
+                    suggestionsEl.textContent = "Tu puntaje es prometedor. Aunque puede no ser suficiente para sorteos generales, tienes grandes posibilidades en sorteos específicos por categoría. Considera estas opciones: 1) Mejorar tu nivel de francés (hasta 50 puntos adicionales). 2) Explorar activamente los Programas de Nominación Provincial (PNP) que otorgan 600 puntos. 3) Ganar más experiencia laboral calificada para calificar a sorteos por ocupación (ej. salud, oficios).";
+                } else {
+                    suggestionsEl.textContent = "Aunque eres elegible para el pool, tu puntaje es bajo para los sorteos actuales. La estrategia más efectiva es aumentar tu puntaje. Las áreas de mayor impacto son: 1) Obtener una Nominación Provincial (600 puntos). 2) Mejorar tu dominio del francés a un nivel NCLC 7 o superior (hasta 50 puntos). 3) Obtener más experiencia laboral calificada, especialmente en Canadá. 4) Aumentar tu nivel de educación.";
+                }
+            }
+        }
+        
+        function resetCalculator() {
+            document.getElementById('calculator-container').style.display = 'block';
+            document.getElementById('results-container').style.display = 'none';
+            currentStep = 0;
+            showStep(0);
+            document.querySelector('form-steps').parentElement.reset();
+        }
+
+        // Chart.js implementation
+        const drawData = [
+            { date: '19-Ago-25', type: 'Health', score: 470, itas: 2500 },
+            { date: '18-Ago-25', type: 'PNP', score: 800, itas: 192 },
+            { date: '08-Ago-25', type: 'French', score: 481, itas: 2500 },
+            { date: '07-Ago-25', type: 'CEC', score: 534, itas: 1000 },
+            { date: '06-Ago-25', type: 'PNP', score: 739, itas: 225 },
+            { date: '22-Jul-25', type: 'Health', score: 475, itas: 4000 },
+            { date: '08-Jul-25', type: 'CEC', score: 518, itas: 3000 },
+            { date: '21-Mar-25', type: 'French', score: 379, itas: 7500 },
+            { date: '05-Feb-25', type: 'CEC', score: 521, itas: 4000 },
+            { date: '20-Nov-24', type: 'Health', score: 463, itas: 3000 },
+            { date: '23-Oct-24', type: 'Trades', score: 433, itas: 1800 },
+            { date: '15-Ago-24', type: 'French', score: 394, itas: 2000 },
+        ];
+
+        let crsChart;
+        function renderChart(userScore, filterType = 'all') {
+            const ctx = document.getElementById('crsDrawsChart').getContext('2d');
+            
+            const filteredData = filterType === 'all' ? drawData : drawData.filter(d => d.type === filterType);
+            filteredData.sort((a,b) => new Date(a.date.replace(/(\d{2})-([A-Za-z]{3})-(\d{2})/, '$2 $1, 20$3')) - new Date(b.date.replace(/(\d{2})-([A-Za-z]{3})-(\d{2})/, '$2 $1, 20$3')));
+
+            const labels = filteredData.map(d => `${d.date} (${d.type})`);
+            const scores = filteredData.map(d => d.score);
+
+            const userScoreLine = {
+                type: 'line',
+                label: 'Tu Puntaje',
+                data: Array(labels.length).fill(userScore),
+                borderColor: '#60868f',
+                borderWidth: 2,
+                fill: false,
+                pointRadius: 0,
+                borderDash: [5, 5],
+                order: 0 
+            };
+            
+            if (crsChart) {
+                crsChart.destroy();
+            }
+
+            crsChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Puntaje Mínimo CRS',
+                            data: scores,
+                            backgroundColor: 'rgba(221, 44, 0, 0.7)',
+                            borderColor: 'rgb(221, 44, 0)',
+                            borderWidth: 1,
+                            order: 1
+                        },
+                        userScoreLine
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            min: Math.min(...scores, userScore) > 350 ? 350 : 0,
+                            title: {
+                                display: true,
+                                text: 'Puntaje CRS'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 90,
+                                minRotation: 45
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y;
+                                    }
+                                    if(context.dataset.label === 'Puntaje Mínimo CRS') {
+                                       const dataPoint = filteredData[context.dataIndex];
+                                       return [`Puntaje: ${dataPoint.score}`, `ITAs: ${dataPoint.itas}`];
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        document.querySelectorAll('.draw-filter-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const filterType = this.dataset.type;
+                const userScore = parseInt(document.getElementById('crs-score-display').textContent) || 0;
+                renderChart(userScore, filterType);
+                
+                document.querySelectorAll('.draw-filter-btn').forEach(btn => {
+                    btn.classList.remove('bg-red-600', 'text-white');
+                    btn.classList.add('bg-gray-200', 'text-gray-700');
+                });
+                this.classList.add('bg-red-600', 'text-white');
+                this.classList.remove('bg-gray-200', 'text-gray-700');
+            });
+        });
+
+        // Initial setup
+        showStep(currentStep);
+        toggleSpouseSections();
+
+    </script>
+</body>
+</html>
